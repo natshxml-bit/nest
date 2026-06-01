@@ -2,14 +2,25 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { BASE_URL } = require('../../config/settings');
 
+// 🔥 FIX ANTI-403: Jurus Nyamar Tingkat Dewa Buat Vercel
 const http = axios.create({
-  timeout: 10000,
+  timeout: 15000,
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
     'Accept-Encoding': 'gzip, deflate, br',
+    'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'none',
+    'sec-fetch-user': '?1',
+    'upgrade-insecure-requests': '1',
+    'Cache-Control': 'max-age=0',
     'Connection': 'keep-alive',
+    'Referer': 'https://www.google.com/' // Pura-pura dateng dari Google
   }
 });
 
@@ -31,7 +42,7 @@ function extractSlug(href) {
 async function getDetailData(slug) {
   try {
     const url = `${BASE_URL}/series/${slug}/`;
-    const { data: html } = await http.get(url, { timeout: 8000 });
+    const { data: html } = await http.get(url, { timeout: 10000 }); // Naikin timeout dikit buat Vercel
     const $ = cheerio.load(html);
     
     const rating = $('.numscore').text().trim() 
@@ -52,7 +63,16 @@ async function getDetailData(slug) {
 
 async function scrapeHome() {
   const start = Date.now();
-  const { data: html } = await http.get(BASE_URL);
+  // Tangkep error 403 di sini biar nggak bikin crash se-server
+  let html;
+  try {
+    const response = await http.get(BASE_URL);
+    html = response.data;
+  } catch (error) {
+    console.error(`[HOME ERROR] Gagal ngambil data dari ${BASE_URL}. Error:`, error.message);
+    throw new Error('Gagal ngelewatin blokiran keamanan web (403)');
+  }
+  
   const $ = cheerio.load(html);
 
   const result = {
@@ -102,7 +122,15 @@ async function scrapeHome() {
     delete item.needsFallback;
   });
 
-  await Promise.all(detailPromises);
+  // Kalau di Vercel, jangan barbar nembak parallel banyak-banyak, kita kasih limit 5 aja biar nggak keciduk DDOS
+  const limit = (await import('p-limit')).default(5);
+  await Promise.all(result.popular_today.map(item => limit(async () => {
+      const detail = await getDetailData(item.slug);
+      item.synopsis = detail.synopsis;
+      if (item.needsFallback) item.rating = detail.rating;
+      delete item.needsFallback;
+  })));
+
 
   // ========== LATEST UPDATE ==========
   $('.bixbox').each((_, box) => {
