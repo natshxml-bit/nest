@@ -2,8 +2,6 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { BASE_URL } = require('../../config/settings');
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 const http = axios.create({
   timeout: 10000,
   headers: {
@@ -29,6 +27,29 @@ function extractSlug(href) {
   return href.replace(BASE_URL, '').replace('/series/', '').replace('/project/', '').replace(/\/$/, '');
 }
 
+// ─── Fetch detail page buat rating + sinopsis ───
+async function getDetailData(slug) {
+  try {
+    const url = `${BASE_URL}/series/${slug}/`;
+    const { data: html } = await http.get(url, { timeout: 8000 });
+    const $ = cheerio.load(html);
+    
+    const rating = $('.numscore').text().trim() 
+      || $('.rating').text().trim()
+      || $('[class*="score"]').first().text().trim()
+      || '0';
+    
+    const synopsis = $('.entry-content p').first().text().trim() 
+      || $('.synopsis p').first().text().trim()
+      || $('[class*="synopsis"]').first().text().trim()
+      || '';
+    
+    return { rating, synopsis };
+  } catch (e) {
+    return { rating: '0', synopsis: '' };
+  }
+}
+
 async function scrapeHome() {
   const start = Date.now();
   const { data: html } = await http.get(BASE_URL);
@@ -52,20 +73,36 @@ async function scrapeHome() {
       
       if (link.length && title) {
         const href = link.attr('href') || '';
+        const rating = $item.find('.numscore').text().trim();
+        
         result.popular_today.push({
           title,
           slug: extractSlug(href),
           thumb: getImageSrc($, item),
           type: $item.find('.typename').text().trim() || 'Manhwa',
           latest_chapter: $item.find('.epxs').text().trim(),
-          rating: $item.find('.numscore').text().trim(),
+          rating: rating || '0',
           link: href,
           is_colored: $item.find('.colored').length > 0,
-          is_hot: $item.find('.hotx').length > 0
+          is_hot: $item.find('.hotx').length > 0,
+          synopsis: '',
+          needsFallback: !rating // flag kalau rating kosong
         });
       }
     });
   });
+
+  // ─── Parallel fetch: sinopsis + rating fallback ───
+  const detailPromises = result.popular_today.map(async (item) => {
+    const detail = await getDetailData(item.slug);
+    item.synopsis = detail.synopsis;
+    if (item.needsFallback) {
+      item.rating = detail.rating;
+    }
+    delete item.needsFallback;
+  });
+
+  await Promise.all(detailPromises);
 
   // ========== LATEST UPDATE ==========
   $('.bixbox').each((_, box) => {
@@ -99,7 +136,7 @@ async function scrapeHome() {
         type: 'Manhwa',
         latest_chapter: latestCh,
         link: href,
-        chapters // tetep ada buat detail
+        chapters
       });
     });
   });
@@ -141,7 +178,7 @@ async function scrapeHome() {
     });
   });
 
-  console.log(`[HOME] DONE in ${Date.now() - start}ms — Popular: ${result.popular_today.length}, Latest: ${result.latest_update.length}, Project: ${result.project_update.length}`);
+  console.log(`[HOME] DONE in ${Date.now() - start}ms`);
   return result;
 }
 

@@ -50,51 +50,91 @@ async function scrapeDetail(slug) {
   }
   if (!result.rating) result.rating = '0';
 
-  // ========== META INFO FIX ==========
-  // Coba berbagai struktur HTML yang umum di theme manga WP
-  
-  // Method 1: .tsinfo .imptdt (Madara theme)
-  $('.tsinfo .imptdt, .info-right .imptdt').each((_, el) => {
+  // ==========================================
+  // AUTHOR & ARTIST — MULTI METHOD SCRAPER
+  // ==========================================
+
+  // Method 1: .tsinfo .imptdt (Madara theme standard)
+  $('.tsinfo .imptdt, .info-right .imptdt, .imptdt').each((_, el) => {
     const $el = $(el);
     const label = $el.contents().filter(function() {
-      return this.nodeType === 3; // text node
+      return this.nodeType === 3;
     }).text().trim().toLowerCase();
-    
-    const value = $el.find('a, span, i').last().text().trim();
+    const value = $el.find('a, span, i, div, strong, b').last().text().trim();
     
     if (label.includes('status')) result.status = value;
-    if (label.includes('type')) result.type = value;
+    if (label.includes('type') || label.includes('format')) result.type = value;
     if (label.includes('author')) result.author = value;
     if (label.includes('artist')) result.artist = value;
   });
 
-  // Method 2: .fmed (MangaStream theme)
-  if (!result.status || !result.type) {
-    $('.fmed, .flex-wrap').each((_, el) => {
+  // Method 2: .fmed / .flex-wrap (MangaStream / custom flex)
+  if (!result.status || !result.type || !result.author || !result.artist) {
+    $('.fmed, .flex-wrap, .flex, .info-item, .meta-item').each((_, el) => {
       const $el = $(el);
-      const label = $el.find('b, .label, strong').first().text().trim().toLowerCase();
-      const value = $el.find('span, a').last().text().trim();
+      const label = $el.find('b, .label, strong, .name, dt, .info-label, span:first-child').first().text().trim().toLowerCase();
+      const value = $el.find('span:last-child, a:last-child, .value, dd, .info-value, div:last-child').last().text().trim();
       
       if (label.includes('status') && !result.status) result.status = value;
-      if (label.includes('type') && !result.type) result.type = value;
+      if ((label.includes('type') || label.includes('format')) && !result.type) result.type = value;
       if (label.includes('author') && !result.author) result.author = value;
       if (label.includes('artist') && !result.artist) result.artist = value;
     });
   }
 
-  // Method 3: table / list structure
-  if (!result.status || !result.type) {
-    $('table tr, dl dt, .info-content li').each((_, el) => {
+  // Method 3: table / dl dt / list
+  if (!result.status || !result.type || !result.author || !result.artist) {
+    $('table tr, dl dt, .info-content li, .series-info li, .detail-list li').each((_, el) => {
       const $el = $(el);
       const text = $el.text().toLowerCase();
-      const value = $el.next().text().trim() || $el.find('+ dd').text().trim() || $el.find('td:last-child, span:last-child').text().trim();
+      const value = $el.next().text().trim() || $el.find('+ dd').text().trim() || $el.find('td:last-child, span:last-child, .value').text().trim();
       
       if (text.includes('status') && !result.status) result.status = value;
-      if (text.includes('type') && !result.type) result.type = value;
+      if ((text.includes('type') || text.includes('format')) && !result.type) result.type = value;
       if (text.includes('author') && !result.author) result.author = value;
       if (text.includes('artist') && !result.artist) result.artist = value;
     });
   }
+
+  // Method 4: GENERIC — cari semua elemen yang textnya mengandung Author/Artist
+  // Ini nge-scan seluruh dokumen buat nemu pattern "Author: ..." atau "Artist: ..."
+  if (!result.author || !result.artist) {
+    const scanElements = [
+      '.tsinfo', '.info-right', '.series-info', '.detail-info', '.manga-info', 
+      '.post-content', '.entry-content', '.summary', '.infox', '.wd-full'
+    ];
+    
+    scanElements.forEach(selector => {
+      $(selector).each((_, el) => {
+        const text = $(el).text();
+        
+        if (!result.author) {
+          const authorMatch = text.match(/author\s*[:\-]\s*([^\n\r<<]+)/i);
+          if (authorMatch) result.author = authorMatch[1].trim();
+        }
+        if (!result.artist) {
+          const artistMatch = text.match(/artist\s*[:\-]\s*([^\n\r<<]+)/i);
+          if (artistMatch) result.artist = artistMatch[1].trim();
+        }
+      });
+    });
+  }
+
+  // Method 5: RAW REGEX FALLBACK pada HTML mentah
+  // Kalau cheerio gak nemu karena struktur aneh, regex dari string HTML
+  if (!result.author) {
+    const authorRegex = /author\s*[:\-]\s*<<[^>]*>([^<<]+)/i;
+    const match = html.match(authorRegex);
+    if (match) result.author = match[1].trim();
+  }
+  if (!result.artist) {
+    const artistRegex = /artist\s*[:\-]\s*<<[^>]*>([^<<]+)/i;
+    const match = html.match(artistRegex);
+    if (match) result.artist = match[1].trim();
+  }
+
+  // DEBUG: Uncomment baris di bawah ini kalau masih gak muncul
+  // console.log('DEBUG HTML META:', $('.tsinfo, .info-right, .series-info, .detail-info').first().html());
 
   // Alternative title
   const altEl = $('.alternative, .alternative-title, .wd-full:contains("Alternative")').first();

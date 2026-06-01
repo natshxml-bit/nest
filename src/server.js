@@ -9,9 +9,10 @@ const { scrapeDetail } = require('./scraper/detail');
 const { scrapeRead } = require('./scraper/read');
 const { scrapeSearch } = require('./scraper/search');
 const { scrapeLatestPage } = require('./scraper/latest');
+const { scrapePopular } = require('./scraper/populer');
 const { scrapeUpdates } = require('./scraper/update');
 const { scrapeGenres, scrapeByGenre } = require('./scraper/genre');
-const { scrapeFilter } = require('./scraper/filter'); // <-- TAMBAHAN IMPORT FILTER
+const { scrapeFilter } = require('./scraper/filter');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -194,6 +195,38 @@ app.get('/api/latest', async (req, res) => {
   }
 });
 
+// POPULAR
+app.get('/api/popular', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const force = req.query.refresh === '1';
+  const start = Date.now();
+  try {
+    const { data, cached } = await cachedScrape(
+      cacheKey('popular', `page${page}`),
+      DEFAULT_TTL.latest || 1800,
+      () => scrapePopular(page),
+      force
+    );
+
+    const hasNext = data.pagination?.has_next || false;
+    const nextPage = hasNext ? (data.pagination?.current || page) + 1 : null;
+
+    res.json({
+      success: true,
+      time_ms: Date.now() - start,
+      cached,
+      page: data.pagination?.current || page,
+      total_pages: data.pagination?.total || page,
+      has_next: hasNext,
+      next_url: hasNext ? `/api/popular?page=${nextPage}` : null,
+      count: data.results?.length || 0,
+      data: data.results || []
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // SEARCH
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
@@ -216,7 +249,7 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// === ADVANCED FILTER ===
+// ADVANCED FILTER
 app.get('/api/filter', async (req, res) => {
   const status = req.query.status || '';
   const type = req.query.type || '';
@@ -277,10 +310,11 @@ app.get('/', (req, res) => {
       genres: '/api/genres',
       genre: '/api/genre/:slug?page=1',
       latest: '/api/latest?page=1',
+      popular: '/api/popular?page=1',
       detail: '/api/detail/:slug',
       read: '/api/read/:slug',
       search: '/api/search?q=keyword',
-      filter: '/api/filter?status=ongoing&type=manhwa&order=popular&page=1', // <-- TAMBAHAN ENDPOINT FILTER
+      filter: '/api/filter?status=ongoing&type=manhwa&order=popular&page=1',
       health: '/api/health',
       'clear-cache': 'POST /api/cache/clear'
     },

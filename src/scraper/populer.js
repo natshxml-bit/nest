@@ -1,12 +1,11 @@
-// src/scraper/latest.js
 const axios = require('axios');
 const cheerio = require('cheerio');
 
 const BASE_URL = 'https://www.manhwaindo.my';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-async function scrapeLatestPage(page = 1) {
-  const url = `${BASE_URL}/series/?order=update&page=${page}`;
+async function scrapePopular(page = 1) {
+  const url = `${BASE_URL}/series/?order=popular&page=${page}`;
   
   const { data: html } = await axios.get(url, {
     headers: { 'User-Agent': USER_AGENT },
@@ -24,7 +23,6 @@ async function scrapeLatestPage(page = 1) {
     const link = linkEl.attr('href') || '';
     const chapter = item.find('.epxs, .epx, .latest-chap').text().trim();
 
-    // Cari thumb
     let thumb = '';
     const img = item.find('img');
     thumb = img.attr('data-src') || 
@@ -32,7 +30,6 @@ async function scrapeLatestPage(page = 1) {
             img.attr('data-original') ||
             img.attr('src') || '';
 
-    // Fallback noscript
     if (!thumb || thumb.startsWith('data:')) {
       const noscript = item.find('noscript').html();
       if (noscript) {
@@ -41,7 +38,6 @@ async function scrapeLatestPage(page = 1) {
       }
     }
 
-    // Fallback placeholder
     if (!thumb || thumb.startsWith('data:') || thumb.includes('svg')) {
       thumb = 'https://via.placeholder.com/200x300?text=No+Image';
     }
@@ -52,9 +48,8 @@ async function scrapeLatestPage(page = 1) {
     const isColor = item.find('.colx, .color').length > 0;
 
     if (title && link) {
-      // FIX: Hapus prefix "series/" dari slug
       let slug = link.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
-      slug = slug.replace(/^series\//, ''); // <-- Hapus "series/" di depan
+      slug = slug.replace(/^series\//, '');
 
       results.push({
         title,
@@ -71,7 +66,6 @@ async function scrapeLatestPage(page = 1) {
     }
   });
 
-  // Pagination
   const pageNav = $('.pagination');
   const currentPage = parseInt(pageNav.find('.current').text().trim()) || page;
   
@@ -92,9 +86,9 @@ async function scrapeLatestPage(page = 1) {
       next_page: hasNext ? currentPage + 1 : null,
       total: totalPages,
       has_next: hasNext,
-      next_url: hasNext ? `/api/latest?page=${currentPage + 1}` : null
+      next_url: hasNext ? `/api/popular?page=${currentPage + 1}` : null
     }
   };
 }
 
-module.exports = { scrapeLatestPage };
+module.exports = { scrapePopular };
