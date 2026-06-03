@@ -1,11 +1,18 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
   "functions": {
     "api/**/*.js": {
       "maxDuration": 30
     }
   },
   "rewrites": [
+    { "source": "/", "destination": "/api/index" },
     { "source": "/home", "destination": "/api/home" },
     { "source": "/updates", "destination": "/api/updates" },
     { "source": "/search", "destination": "/api/search" },

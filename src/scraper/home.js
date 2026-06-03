@@ -1,6 +1,6 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const { BASE_URL } = require('../../config/settings');
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+const BASE_URL = 'https://www.manhwaindo.my';
 
 // 🔥 FIX ANTI-403: Jurus Nyamar Tingkat Dewa Buat Vercel
 const http = axios.create({
@@ -210,4 +210,4 @@ async function scrapeHome() {
   return result;
 }
 
-module.exports = { scrapeHome };
+export { scrapeHome };

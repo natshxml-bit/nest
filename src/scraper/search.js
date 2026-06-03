@@ -1,6 +1,6 @@
 // src/scraper/search.js
-const axios = require('axios');
-const cheerio = require('cheerio');
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -88,4 +88,4 @@ async function scrapeSearch(keyword) {
   return results;
 }
 
-module.exports = { scrapeSearch, scrapeDetailRating };
+export { scrapeSearch, scrapeDetailRating };
