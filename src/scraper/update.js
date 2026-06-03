@@ -1,5 +1,5 @@
 // src/scraper/update.js
-import { axiosNinja } from '../utils.js'; // 🔥 Import axiosNinja
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Import senjata cache lo!
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
@@ -24,7 +24,6 @@ async function scrapeRating(detailUrl) {
   const timeout = setTimeout(() => controller.abort(), 3000); // 3s max
 
   try {
-    // 🔥 FIX 1: Pake axiosNinja, hapus headers USER_AGENT
     const { data: html } = await axiosNinja.get(detailUrl, {
       timeout: 3000,
       signal: controller.signal,
@@ -33,7 +32,7 @@ async function scrapeRating(detailUrl) {
     clearTimeout(timeout);
     const $ = cheerio.load(html);
     
-    // Fast selectors (urutan paling umum di ManhwaIndo)
+    // Fast selectors
     const fastSelectors = [
       '.ts-rating', 
       '.numscore', 
@@ -70,18 +69,18 @@ async function scrapeRatingsFast(items) {
         results.set(item.link, rating);
       })
     );
-    await Promise.allSettled(promises); // Lanjut meski ada yang fail
+    await Promise.allSettled(promises);
   }
   
   return results;
 }
 
-async function scrapeUpdates(page = 1) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeUpdates(page = 1) {
   const url = page === 1 
     ? `${BASE_URL}/project-updates/` 
     : `${BASE_URL}/project-updates/page/${page}/`;
 
-  // 🔥 FIX 2: Pake axiosNinja di sini juga
   const { data: html } = await axiosNinja.get(url, {
     timeout: 15000,
   });
@@ -107,9 +106,8 @@ async function scrapeUpdates(page = 1) {
     const title = linkEl.attr('title') || linkEl.text().trim();
     const link = linkEl.attr('href') || '';
     
-    // FIX: Hapus prefix "series/" dari slug
     let slug = link.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
-    slug = slug.replace(/^series\//, ''); // <-- Hapus "series/" di depan
+    slug = slug.replace(/^series\//, '');
 
     const typeRaw = item.find('.type, .typez, .typename, .limit').first().text().trim().toUpperCase() || 'MANHWA';
     const type = stripHtml(typeRaw).split(/\s+/)[0];
@@ -131,7 +129,6 @@ async function scrapeUpdates(page = 1) {
     }
   });
 
-  // FAST: scrape ratings parallel
   console.log(`[Scraper] Fast fetching ${rawResults.length} ratings...`);
   const ratingMap = await scrapeRatingsFast(rawResults);
 
@@ -140,7 +137,6 @@ async function scrapeUpdates(page = 1) {
     rating: ratingMap.get(item.link) || '0'
   }));
 
-  // Pagination
   const pageNav = $('.pagination');
   const currentPage = parseInt(pageNav.find('.current').text().trim()) || page;
   let totalPages = currentPage;
@@ -155,6 +151,20 @@ async function scrapeUpdates(page = 1) {
     results,
     pagination: { current: currentPage, next_page: hasNext ? currentPage + 1 : null, total: totalPages, has_next: hasNext, next_url: hasNext ? `/api/updates?page=${currentPage + 1}` : null }
   };
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeUpdates(page = 1) {
+  const start = Date.now();
+  // Key dibedain tiap halaman, misal: manga:updates:1, manga:updates:2
+  const KEY = cacheKey('manga', 'updates', page);
+  const TTL = 60 * 10; // Cache 10 menit
+
+  // Panggil wrapper cachedScrape, kasih arrow function biar tau page ke berapa
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeUpdates(page));
+
+  console.log(`[UPDATES] Page ${page} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeUpdates };

@@ -1,13 +1,13 @@
 // src/scraper/latest.js
-import { axiosNinja } from '../utils.js';
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Import senjata Redis!
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
 
-async function scrapeLatestPage(page = 1) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeLatestPage(page = 1) {
   const url = `${BASE_URL}/series/?order=update&page=${page}`;
   
-  // Pake axiosNinja udah bener banget!
   const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
 
   const $ = cheerio.load(html);
@@ -92,6 +92,20 @@ async function scrapeLatestPage(page = 1) {
       next_url: hasNext ? `/api/latest?page=${currentPage + 1}` : null
     }
   };
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeLatestPage(page = 1) {
+  const start = Date.now();
+  // Key dibikin unik per halaman
+  const KEY = cacheKey('manga', 'latest', page);
+  const TTL = 60 * 10; // Cache 10 menit aja biar up to date
+
+  // Fungsi bungkus
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeLatestPage(page));
+
+  console.log(`[LATEST] Page ${page} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeLatestPage };

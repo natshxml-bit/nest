@@ -1,5 +1,5 @@
 // src/scraper/genre.js
-import { axiosNinja } from '../utils.js'; // 🔥 Udah bener pake ini
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Tambahin Cache Tools
 import * as cheerio from 'cheerio';
 
 function fixImageUrl(url) {
@@ -29,6 +29,7 @@ function extractSlugFromUrl(url, fallbackPatterns = []) {
 }
 
 // === LIST SEMUA GENRE (HARDCODED) ===
+// Ini nggak usah di-cache karena udah instan dari sananya
 async function scrapeGenres() {
   return [
     { name: "4-Koma", slug: "4-koma" },
@@ -92,16 +93,12 @@ async function scrapeGenres() {
 }
 
 
-// === SCRAPE MANHWA BY GENRE ===
-async function scrapeByGenre(genreSlug, pageNum = 1) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeByGenre(genreSlug, pageNum = 1) {
   try {
-    console.log(`[SCRAPE] Fetching genre: ${genreSlug}, page: ${pageNum}`);
-    
-    // FIX: page 1 jangan pakai /page/1/, langsung ke base URL
     const base = `https://www.manhwaindo.my/genres/${genreSlug}`;
     const url = pageNum === 1 ? `${base}/` : `${base}/page/${pageNum}/`;
 
-    // 🔥 FIX: Hapus "headers" dari parameter, cukup pakai timeout
     const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
     
     const $ = cheerio.load(html);
@@ -110,7 +107,6 @@ async function scrapeByGenre(genreSlug, pageNum = 1) {
     $('.uta, .bsx, .page-item-detail, .listupd .bsx').each((_, item) => {
       const el = $(item);
       
-      // === IMAGE ===
       const imgEl = el.find('img').first();
       let cover =
         imgEl.attr('data-src') ||
@@ -126,8 +122,6 @@ async function scrapeByGenre(genreSlug, pageNum = 1) {
       }
       cover = fixImageUrl(cover);
 
-      // === TITLE & LINK ===
-      // Cari link yang paling likely title (yang punya title attr, atau paling besar text)
       let linkEl = el.find('a[title]').first();
       if (!linkEl.length) linkEl = el.find('.tt a, a.tt, h2 a, h3 a, h4 a').first();
       if (!linkEl.length) linkEl = el.find('a').first();
@@ -135,18 +129,14 @@ async function scrapeByGenre(genreSlug, pageNum = 1) {
       const title = linkEl.attr('title') || linkEl.text().trim();
       const link = linkEl.attr('href') || '';
       
-      // FIX: slug extraction pakai pathname, nggak greedy regex
       const slug = extractSlugFromUrl(link, [/.*\/project\//, /.*\/manga\//, /.*\/manhwa\//]);
 
-      // === TYPE ===
       const typeEl = el.find('.type, .typez, [class*="type"]').first();
       const type = (typeEl.text() || 'MANHWA').trim().toUpperCase();
 
-      // === CHAPTER ===
       const chapterEl = el.find('.epxs, .chapter, [class*="chapter"]').first();
       const latest_chapter = chapterEl.text().trim();
 
-      // === TIME ===
       const timeEl = el.find('.time, [class*="time"], [class*="ago"]').first();
       const time = timeEl.text().trim();
 
@@ -163,11 +153,9 @@ async function scrapeByGenre(genreSlug, pageNum = 1) {
       }
     });
 
-    // === PAGINATION ===
     const nextEl = $('.pagination a.next, a[rel="next"], .pagination .next');
     const hasNext = nextEl.length > 0 && !nextEl.hasClass('disabled') && nextEl.attr('href') !== undefined;
     
-    // Cek current page dari URL canonical atau pagination
     let currentPage = pageNum;
     const currentEl = $('.pagination .current, .pagination .active').first();
     if (currentEl.length) {
@@ -186,6 +174,20 @@ async function scrapeByGenre(genreSlug, pageNum = 1) {
     console.error('[SCRAPE] Error byGenre:', error.message);
     throw error;
   }
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeByGenre(genreSlug, pageNum = 1) {
+  const start = Date.now();
+  // Key dibikin unik per genre dan halamannya, misal: manga:genre:action:1
+  const KEY = cacheKey('manga', 'genre', genreSlug, pageNum);
+  const TTL = 60 * 10; // ⏱️ Cache 10 menit
+
+  // Panggil wrapper cachedScrape
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeByGenre(genreSlug, pageNum));
+
+  console.log(`[GENRE] ${genreSlug} Page ${pageNum} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeGenres, scrapeByGenre };

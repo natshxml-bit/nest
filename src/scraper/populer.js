@@ -1,10 +1,10 @@
-import { axiosNinja } from '../utils.js';
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Tambahin senjata Redis
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
 
-
-export async function scrapePopular(page = 1) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapePopular(page = 1) {
   const url = `${BASE_URL}/series/?order=popular&page=${page}`;
   
   const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
@@ -87,3 +87,19 @@ export async function scrapePopular(page = 1) {
     }
   };
 }
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapePopular(page = 1) {
+  const start = Date.now();
+  // Key dibikin unik per halaman, misal: manga:popular:1
+  const KEY = cacheKey('manga', 'popular', page);
+  const TTL = 60 * 10; // Cache disimpen 10 menit
+
+  // Panggil wrapper cachedScrape bawaan utils lo
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapePopular(page));
+
+  console.log(`[POPULAR] Page ${page} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
+}
+
+export { scrapePopular };

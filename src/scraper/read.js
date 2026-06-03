@@ -1,5 +1,5 @@
 // src/scraper/read.js
-import { axiosNinja } from '../utils.js';
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Tambahin Cache Tools
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
@@ -73,10 +73,10 @@ async function getSeriesChapters(seriesSlug) {
   }
 }
 
-async function scrapeRead(slug) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeRead(slug) {
   const url = `${BASE_URL}/${slug}/`;
 
-  // 🔥 FIX 2: Ganti jadi axiosNinja.get, hapus header dan USER_AGENT yang error
   const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
 
   const $ = cheerio.load(html);
@@ -224,6 +224,20 @@ async function scrapeRead(slug) {
   result.images.forEach((img, i) => img.index = i + 1);
 
   return result;
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeRead(slug) {
+  const start = Date.now();
+  // Key unik tiap slug chapter komik, misal: manga:read:solo-leveling-chapter-100
+  const KEY = cacheKey('manga', 'read', slug);
+  const TTL = 60 * 60 * 2; // ⏱️ Cache lumayan lama (2 Jam), krn isi chapter ga bakal berubah
+
+  // Panggil wrapper cachedScrape
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeRead(slug));
+
+  console.log(`[READ] Chapter ${slug} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeRead };

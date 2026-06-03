@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { axiosNinja } from '../utils.js'; // 🔥 Cukup import axiosNinja aja
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Import senjata cache lo Bre
 
 const BASE_URL = 'https://www.manhwaindo.my';
 
@@ -17,14 +17,10 @@ function extractSlug(href) {
   return href.replace(BASE_URL, '').replace('/series/', '').replace('/project/', '').replace(/\/$/, '');
 }
 
-// ─── Fetch detail page buat rating + sinopsis ───
 async function getDetailData(slug) {
   try {
     const url = `${BASE_URL}/series/${slug}/`;
-    
-    // 🔥 FIX: Pake axiosNinja, ga usah panggil NINJA_HEADERS lagi
     const { data: html } = await axiosNinja.get(url, { timeout: 10000 });
-    
     const $ = cheerio.load(html);
     
     const rating = $('.numscore').text().trim() 
@@ -44,12 +40,9 @@ async function getDetailData(slug) {
   }
 }
 
-async function scrapeHome() {
-  const start = Date.now();
-  
-  // 🔥 FIX: Pake axiosNinja di sini juga
+// ─── KODINGAN UTAMA SCRAPER (MURNI SCRAPE) ───
+async function rawScrapeHome() {
   const { data: html } = await axiosNinja.get(BASE_URL, { timeout: 30000 });
-  
   const $ = cheerio.load(html);
 
   const result = {
@@ -89,15 +82,16 @@ async function scrapeHome() {
     });
   });
 
-  // ─── Sequential fetch detail (biar nggak keciduk) ───
-  for (const item of result.popular_today) {
+  // Fetch detail barengan biar ngebut
+  const detailPromises = result.popular_today.map(async (item) => {
     if (item.needsFallback || !item.synopsis) {
       const detail = await getDetailData(item.slug);
       item.synopsis = detail.synopsis;
       if (item.needsFallback) item.rating = detail.rating;
       delete item.needsFallback;
     }
-  }
+  });
+  await Promise.allSettled(detailPromises);
 
   // ========== LATEST UPDATE ==========
   $('.bixbox').each((_, box) => {
@@ -122,14 +116,12 @@ async function scrapeHome() {
       });
 
       const href = seriesLink.attr('href') || '';
-      const latestCh = chapters[0]?.chapter_title || '';
-
       result.latest_update.push({
         title: seriesLink.find('h4').text().trim(),
         slug: extractSlug(href),
         thumb: getImageSrc($, $item.find('.imgu').length ? $item.find('.imgu')[0] : item),
         type: 'Manhwa',
-        latest_chapter: latestCh,
+        latest_chapter: chapters[0]?.chapter_title || '',
         link: href,
         chapters
       });
@@ -159,22 +151,32 @@ async function scrapeHome() {
       });
 
       const href = seriesLink.attr('href') || '';
-      const latestCh = chapters[0]?.chapter_title || '';
-
       result.project_update.push({
         title: seriesLink.find('h4').text().trim(),
         slug: extractSlug(href),
         thumb: getImageSrc($, $item.find('.imgu').length ? $item.find('.imgu')[0] : item),
         type: 'Manhwa',
-        latest_chapter: latestCh,
+        latest_chapter: chapters[0]?.chapter_title || '',
         link: href,
         chapters
       });
     });
   });
 
-  console.log(`[HOME] DONE in ${Date.now() - start}ms`);
   return result;
+}
+
+// ─── 🔥 FUNGSI UTAMA YANG DIEKSPOR (OTOMATIS REDIS CACHE) ───
+async function scrapeHome() {
+  const start = Date.now();
+  const KEY = cacheKey('manga', 'home');
+  const TTL = 60 * 10; // ⏱️ Simpen di cache selama 10 menit
+
+  // Panggil wrapper cachedScrape bawaan lo Bre
+  const { data, cached } = await cachedScrape(KEY, TTL, rawScrapeHome);
+
+  console.log(`[HOME] DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeHome };

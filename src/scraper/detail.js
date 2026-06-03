@@ -1,14 +1,14 @@
 // src/scraper/detail.js
 import * as cheerio from 'cheerio';
-import { axiosNinja } from '../utils.js'; // 🔥 Import axios sakti dari utils
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Import senjata Redis
 
 const BASE_URL = 'https://www.manhwaindo.my';
 
-async function scrapeDetail(slug) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeDetail(slug) {
   const url = `${BASE_URL}/series/${slug}/`;
   
-  // 🔥 Tinggal panggil axiosNinja, otomatis bawa header anti-403 dan timeout!
-  const { data: html } = await axiosNinja.get(url);
+  const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
   
   const $ = cheerio.load(html);
 
@@ -237,6 +237,20 @@ async function scrapeDetail(slug) {
   result.chapters.forEach((ch, i) => ch.index = i + 1);
 
   return result;
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeDetail(slug) {
+  const start = Date.now();
+  // Key dibikin unik per judul komik, misal: manga:detail:solo-leveling
+  const KEY = cacheKey('manga', 'detail', slug);
+  const TTL = 60 * 15; // ⏱️ Disimpen 15 menit biar update terus kalau ada chapter baru
+
+  // Panggil wrapper cachedScrape
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeDetail(slug));
+
+  console.log(`[DETAIL] ${slug} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeDetail };

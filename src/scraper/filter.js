@@ -1,5 +1,5 @@
 // src/scraper/filter.js
-import { axiosNinja } from '../utils.js'; // 🔥 Udah bener import ini
+import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Tambahin Cache Tools
 import * as cheerio from 'cheerio';
 
 function fixImageUrl(url) {
@@ -17,15 +17,12 @@ function extractSlugFromUrl(url) {
   return url.replace(/\/$/, '');
 }
 
-// All-in-one filter function
-async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {}) {
+// ─── KODINGAN MURNI SCRAPER ───
+async function rawScrapeFilter({ page = 1, status = '', type = '', order = '' } = {}) {
   try {
-    console.log(`[SCRAPE] Fetching filter -> page: ${page}, status: ${status}, type: ${type}, order: ${order}`);
-    
     // URL filter all-in-one
     const url = `https://www.manhwaindo.my/series/?page=${page}&status=${status}&type=${type}&order=${order}`;
 
-    // 🔥 FIX: Panggil axiosNinja.get (nggak usah masukin variable headers lagi, tapi timeout-nya tetep boleh dioverride)
     const response = await axiosNinja.get(url, { timeout: 30000 });
     const html = response.data;
     const $ = cheerio.load(html);
@@ -76,6 +73,26 @@ async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {
       pagination: { current: page, has_next: false }
     };
   }
+}
+
+// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
+async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {}) {
+  const start = Date.now();
+  
+  // Bikin Cache Key dinamis dari semua kombinasi parameter
+  // Misal jadinya: manga:filter:1:ongoing:manhwa:popular
+  const safeStatus = status || 'all';
+  const safeType = type || 'all';
+  const safeOrder = order || 'all';
+  const KEY = cacheKey('manga', 'filter', page, safeStatus, safeType, safeOrder);
+  
+  const TTL = 60 * 5; // ⏱️ Cache 5 menit aja cukup buat fitur filter
+
+  // Panggil wrapper cachedScrape
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeFilter({ page, status, type, order }));
+
+  console.log(`[FILTER] P:${page} S:${safeStatus} T:${safeType} O:${safeOrder} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  return data;
 }
 
 export { scrapeFilter };
