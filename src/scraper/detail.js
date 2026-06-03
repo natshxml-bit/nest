@@ -97,7 +97,6 @@ async function scrapeDetail(slug) {
   }
 
   // Method 4: GENERIC — cari semua elemen yang textnya mengandung Author/Artist
-  // Ini nge-scan seluruh dokumen buat nemu pattern "Author: ..." atau "Artist: ..."
   if (!result.author || !result.artist) {
     const scanElements = [
       '.tsinfo', '.info-right', '.series-info', '.detail-info', '.manga-info', 
@@ -121,7 +120,6 @@ async function scrapeDetail(slug) {
   }
 
   // Method 5: RAW REGEX FALLBACK pada HTML mentah
-  // Kalau cheerio gak nemu karena struktur aneh, regex dari string HTML
   if (!result.author) {
     const authorRegex = /author\s*[:\-]\s*<<[^>]*>([^<<]+)/i;
     const match = html.match(authorRegex);
@@ -133,8 +131,19 @@ async function scrapeDetail(slug) {
     if (match) result.artist = match[1].trim();
   }
 
-  // DEBUG: Uncomment baris di bawah ini kalau masih gak muncul
-  // console.log('DEBUG HTML META:', $('.tsinfo, .info-right, .series-info, .detail-info').first().html());
+  // ==========================================
+  // ARTIST — PARSE DARI AUTHOR FIELD
+  // ==========================================
+  if (!result.artist && result.author) {
+    const parts = result.author.split(/,|\/|&/);
+    for (const part of parts) {
+      if (part.toLowerCase().includes('art') || part.toLowerCase().includes('illustration')) {
+        result.artist = part.replace(/\s*\([^)]*\)/g, '').trim();
+        result.author = result.author.replace(part, '').replace(/,\s*,/g, ',').replace(/^,|,$/g, '').trim();
+        break;
+      }
+    }
+  }
 
   // Alternative title
   const altEl = $('.alternative, .alternative-title, .wd-full:contains("Alternative")').first();
@@ -149,8 +158,36 @@ async function scrapeDetail(slug) {
     }
   });
 
-  // Synopsis
-  result.synopsis = $('.entry-content p, .summary p, .synopsis p, .wd-full:contains("Synopsis") + div p, [itemprop="description"] p').first().text().trim();
+  // ==========================================
+  // SYNOPSIS — EXPANDED SELECTORS
+  // ==========================================
+  const synopsisSelectors = [
+    '.manga-excerpt',
+    '.summary',
+    '.synopsis',
+    '[itemprop="description"]',
+    '.post-content_item:contains("Synopsis") .summary-content',
+    '.wd-full:contains("Synopsis")',
+    '.entry-content'
+  ];
+
+  for (const sel of synopsisSelectors) {
+    const el = $(sel).first();
+    if (el.length && el.text().trim()) {
+      result.synopsis = el.text().trim().substring(0, 1000);
+      break;
+    }
+  }
+
+  // Fallback: cari paragraf terpanjang di .entry-content (biasanya synopsis)
+  if (!result.synopsis) {
+    let longestText = '';
+    $('.entry-content p, .summary p, .manga-excerpt p').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.length > longestText.length) longestText = text;
+    });
+    if (longestText.length > 50) result.synopsis = longestText;
+  }
 
   // Chapters
   const chapterList = $('#chapterlist ul li, .eplister ul li, .chapters li, .chapter-list li, .clstyle li');
