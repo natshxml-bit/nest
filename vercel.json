@@ -1,15 +1,20 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "src/server.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
     }
-  ],
+  },
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/src/server.js"
-    }
+    { "source": "/home", "destination": "/api/home" },
+    { "source": "/updates", "destination": "/api/updates" },
+    { "source": "/search", "destination": "/api/search" },
+    { "source": "/popular", "destination": "/api/popular" },
+    { "source": "/latest", "destination": "/api/latest" },
+    { "source": "/filter", "destination": "/api/filter" },
+    { "source": "/genres", "destination": "/api/genres" },
+    { "source": "/genre/:path*", "destination": "/api/genre/:path*" },
+    { "source": "/detail/:path*", "destination": "/api/detail/:path*" },
+    { "source": "/read/:path*", "destination": "/api/read/:path*" }
   ]
 }
