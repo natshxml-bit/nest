@@ -2,9 +2,6 @@
   "name": "manhwaindo-api",
   "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vercel dev"
-  },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
     "axios": "^1.6.0",
