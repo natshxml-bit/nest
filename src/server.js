@@ -122,7 +122,8 @@ app.get('/api/filter', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    message: 'ManhwaIndo Scraper API',
+    author: 'natshi',
+    message: 'Gunakan secara pintar',
     endpoints: [
       '/api/home',
       '/api/popular?page=1',
