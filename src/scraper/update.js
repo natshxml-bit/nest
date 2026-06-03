@@ -1,9 +1,8 @@
 // src/scraper/update.js
-import axios from 'axios';
+import { axiosNinja } from '../utils.js'; // 🔥 Import axiosNinja
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /** Extract URL dari HTML string */
 function extractUrl(html) {
@@ -25,8 +24,8 @@ async function scrapeRating(detailUrl) {
   const timeout = setTimeout(() => controller.abort(), 3000); // 3s max
 
   try {
-    const { data: html } = await axios.get(detailUrl, {
-      headers: { 'User-Agent': USER_AGENT },
+    // 🔥 FIX 1: Pake axiosNinja, hapus headers USER_AGENT
+    const { data: html } = await axiosNinja.get(detailUrl, {
       timeout: 3000,
       signal: controller.signal,
     });
@@ -82,8 +81,8 @@ async function scrapeUpdates(page = 1) {
     ? `${BASE_URL}/project-updates/` 
     : `${BASE_URL}/project-updates/page/${page}/`;
 
-  const { data: html } = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
+  // 🔥 FIX 2: Pake axiosNinja di sini juga
+  const { data: html } = await axiosNinja.get(url, {
     timeout: 15000,
   });
 

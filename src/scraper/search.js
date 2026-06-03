@@ -1,17 +1,17 @@
 // src/scraper/search.js
-import axios from 'axios';
+import { axiosNinja } from '../utils.js'; // 🔥 Udah diganti pake axiosNinja
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function scrapeDetailRating(slug) {
   try {
-    const url = `${BASE_URL}/${slug}`;
-    const { data: html } = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
-      timeout: 10000
-    });
+    // Kalau link aslinya butuh /series/, bisa ditambahin di sini
+    const url = `${BASE_URL}/series/${slug}/`; // Gue tambahin /series/ biar konsisten sama file lain
+    
+    // 🔥 FIX 1: Pake axiosNinja
+    const { data: html } = await axiosNinja.get(url, { timeout: 10000 });
+    
     const $ = cheerio.load(html);
     const rating = $('.rating-value, .score, [class*="rating"], .numscore').first().text().trim();
     return rating || 'N/A';
@@ -35,10 +35,8 @@ async function withConcurrency(tasks, limit) {
 async function scrapeSearch(keyword) {
   const url = `${BASE_URL}/?s=${encodeURIComponent(keyword)}`;
   
-  const { data: html } = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: 30000
-  });
+  // 🔥 FIX 2: Pake axiosNinja
+  const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
 
   const $ = cheerio.load(html);
   const results = [];
@@ -70,7 +68,8 @@ async function scrapeSearch(keyword) {
     }
 
     if (title && link) {
-      const slug = link.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      let slug = link.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      slug = slug.replace(/^series\//, ''); // Bersihin prefix series biar rapi kayak di latest.js
       results.push({ title, slug, thumb, chapter: chapter || 'N/A', rating: 'N/A' });
     }
   });

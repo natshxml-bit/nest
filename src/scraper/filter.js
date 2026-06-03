@@ -1,12 +1,6 @@
 // src/scraper/filter.js
-import axios from 'axios';
+import { axiosNinja } from '../utils.js'; // 🔥 Udah bener import ini
 import * as cheerio from 'cheerio';
-
-const headers = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-};
 
 function fixImageUrl(url) {
   if (!url) return '';
@@ -31,7 +25,8 @@ async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {
     // URL filter all-in-one
     const url = `https://www.manhwaindo.my/series/?page=${page}&status=${status}&type=${type}&order=${order}`;
 
-    const response = await axios.get(url, { headers, timeout: 30000 });
+    // 🔥 FIX: Panggil axiosNinja.get (nggak usah masukin variable headers lagi, tapi timeout-nya tetep boleh dioverride)
+    const response = await axiosNinja.get(url, { timeout: 30000 });
     const html = response.data;
     const $ = cheerio.load(html);
     const results = [];
@@ -49,7 +44,7 @@ async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {
       const link = linkEl.attr('href') || '';
       const slug = extractSlugFromUrl(link);
       const typeSpan = el.find('span.typename').first();
-const itemType = typeSpan.text().trim().toUpperCase();
+      const itemType = typeSpan.text().trim().toUpperCase();
       const latest_chapter = el.find('.epxs, .chapter').first().text().trim();
 
       if (title && slug) {

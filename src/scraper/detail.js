@@ -1,17 +1,14 @@
 // src/scraper/detail.js
-import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { axiosNinja } from '../utils.js'; // 🔥 Import axios sakti dari utils
 
 const BASE_URL = 'https://www.manhwaindo.my';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function scrapeDetail(slug) {
   const url = `${BASE_URL}/series/${slug}/`;
   
-  const { data: html } = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: 30000
-  });
+  // 🔥 Tinggal panggil axiosNinja, otomatis bawa header anti-403 dan timeout!
+  const { data: html } = await axiosNinja.get(url);
   
   const $ = cheerio.load(html);
 

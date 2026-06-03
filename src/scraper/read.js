@@ -1,9 +1,8 @@
 // src/scraper/read.js
-import axios from 'axios';
+import { axiosNinja } from '../utils.js';
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 function extractSlug(href) {
   if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('void')) return null;
@@ -25,10 +24,7 @@ function extractSlug(href) {
 async function getSeriesChapters(seriesSlug) {
   try {
     const url = `${BASE_URL}/series/${seriesSlug}/`;
-    const { data: html } = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
-      timeout: 30000
-    });
+    const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
     const $ = cheerio.load(html);
 
     const chapters = [];
@@ -80,10 +76,8 @@ async function getSeriesChapters(seriesSlug) {
 async function scrapeRead(slug) {
   const url = `${BASE_URL}/${slug}/`;
 
-  const { data: html } = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: 30000
-  });
+  // 🔥 FIX 2: Ganti jadi axiosNinja.get, hapus header dan USER_AGENT yang error
+  const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
 
   const $ = cheerio.load(html);
 
@@ -96,7 +90,7 @@ async function scrapeRead(slug) {
     prev_chapter: null,
     next_chapter: null,
     images: [],
-    chapters: [] // ← TAMBAHIN INI
+    chapters: [] 
   };
 
   // Title
@@ -124,7 +118,7 @@ async function scrapeRead(slug) {
   let allChapters = [];
   if (result.series_slug) {
     allChapters = await getSeriesChapters(result.series_slug);
-    result.chapters = allChapters; // ← MASUKIN KE RESPONSE
+    result.chapters = allChapters; 
   }
 
   // ========== PREV / NEXT dari navigasi halaman ==========
@@ -154,10 +148,10 @@ async function scrapeRead(slug) {
     
     if (currentIndex !== -1) {
       if (!result.prev_chapter && currentIndex < allChapters.length - 1) {
-        result.prev_chapter = allChapters[currentIndex + 1].slug; // +1 karena descending
+        result.prev_chapter = allChapters[currentIndex + 1].slug; 
       }
       if (!result.next_chapter && currentIndex > 0) {
-        result.next_chapter = allChapters[currentIndex - 1].slug; // -1 karena descending
+        result.next_chapter = allChapters[currentIndex - 1].slug; 
       }
     }
   }
