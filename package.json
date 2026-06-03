@@ -2,12 +2,15 @@
   "name": "manhwaindo-api",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
   "dependencies": {
-    "@sparticuz/chromium": "^149.0.0",
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
+    "express": "^4.22.2",
     "ioredis": "^5.3.2",
-    "p-limit": "^7.3.0",
-    "puppeteer-core": "^23.11.0"
+    "p-limit": "^7.3.0"
   }
 }
