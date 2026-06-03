@@ -2,7 +2,21 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 const BASE_URL = 'https://www.manhwaindo.my';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// 🔥 HEADERS SAKTI: Pura-pura jadi browser Chrome PC biar lolos 403
+const NINJA_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Referer': 'https://www.google.com/',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'cross-site',
+  'Sec-Fetch-User': '?1',
+  'Cache-Control': 'max-age=0'
+};
 
 function getImageSrc($, el) {
   const $el = $(el);
@@ -23,7 +37,7 @@ async function getDetailData(slug) {
   try {
     const url = `${BASE_URL}/series/${slug}/`;
     const { data: html } = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      headers: NINJA_HEADERS, // 👈 Pake header nyamar di sini
       timeout: 10000
     });
     const $ = cheerio.load(html);
@@ -40,6 +54,8 @@ async function getDetailData(slug) {
     
     return { rating, synopsis };
   } catch (e) {
+    // Biar nggak nge-crash kalau satu manga gagal di-fetch
+    console.error(`[Scrape Error] Gagal fetch detail untuk: ${slug}`);
     return { rating: '0', synopsis: '' };
   }
 }
@@ -48,7 +64,7 @@ async function scrapeHome() {
   const start = Date.now();
   
   const { data: html } = await axios.get(BASE_URL, {
-    headers: { 'User-Agent': USER_AGENT },
+    headers: NINJA_HEADERS, // 👈 Pake header nyamar di sini juga
     timeout: 30000
   });
   
