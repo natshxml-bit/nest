@@ -2,9 +2,13 @@
   "name": "manhwaindo-api",
   "version": "1.0.0",
   "type": "module",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "axios": "^1.6.0",

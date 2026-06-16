@@ -1,97 +1,119 @@
 // src/scraper/filter.js
-import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Tambahin Cache Tools
 import * as cheerio from 'cheerio';
+// 🔥 1. TAMBAHIN bersihinUrlGambar DI IMPORT INI
+import { axiosNinja, cachedScrape, cacheKey, bersihinUrlGambar } from '../utils.js'; 
 
-function fixImageUrl(url) {
-  if (!url) return '';
-  if (!url.startsWith('http')) return 'https://www.manhwaindo.my' + (url.startsWith('/') ? '' : '/') + url;
-  return url;
+const BASE_URL = 'https://www.manhwaindo.my';
+
+// ─── HELPER FUNCTIONS ───
+function getImageSrc($, el) {
+  const $el = $(el);
+  const noscript = $el.find('noscript').html();
+  if (noscript) {
+    const m = noscript.match(/src=["']([^"']+)["']/);
+    if (m && m[1] && !m[1].includes('svg')) return m[1];
+  }
+  return $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
 }
 
-function extractSlugFromUrl(url) {
-  try {
-    const pathname = new URL(url, 'https://www.manhwaindo.my').pathname;
-    const parts = pathname.split('/').filter(Boolean);
-    if (parts.length > 0) return parts[parts.length - 1];
-  } catch (e) {}
-  return url.replace(/\/$/, '');
+function extractSlug(href) {
+  return href.replace(BASE_URL, '').replace('/series/', '').replace('/project/', '').replace(/\/$/, '');
 }
 
 // ─── KODINGAN MURNI SCRAPER ───
-async function rawScrapeFilter({ page = 1, status = '', type = '', order = '' } = {}) {
+async function rawScrapeFilter({ page = 1, status = '', type = '', order = '', genre = '' } = {}) {
   try {
-    // URL filter all-in-one
-    const url = `https://www.manhwaindo.my/series/?page=${page}&status=${status}&type=${type}&order=${order}`;
+    // 🔥 Build URL dinamis. Perhatiin genre pake genre[] sesuai form HTML web aslinya
+    const genreQuery = genre ? `&genre[]=${genre}` : '';
+    const url = `${BASE_URL}/series/?page=${page}&status=${status}&type=${type}&order=${order}${genreQuery}`;
 
-    const response = await axiosNinja.get(url, { timeout: 30000 });
-    const html = response.data;
+    const { data: html } = await axiosNinja.get(url, { timeout: 30000 });
     const $ = cheerio.load(html);
     const results = [];
 
-    $('.bsx, .page-item-detail').each((_, item) => {
-      const el = $(item);
-      const imgEl = el.find('img').first();
-      let cover = imgEl.attr('data-src') || imgEl.attr('data-lazy-src') || imgEl.attr('src') || '';
-      cover = fixImageUrl(cover);
-
-      let linkEl = el.find('a[title]').first();
-      if (!linkEl.length) linkEl = el.find('.tt a, h2 a, h3 a').first();
-
-      const title = linkEl.attr('title') || linkEl.text().trim();
+    // Loop komik (Pake selector listupd bs yang udah kita benerin sebelumnya)
+    $('.listupd .bs').each((_, el) => {
+      const item = $(el);
+      const linkEl = item.find('a').first();
+      
+      const title = item.find('.tt').text().trim() || linkEl.attr('title') || '';
       const link = linkEl.attr('href') || '';
-      const slug = extractSlugFromUrl(link);
-      const typeSpan = el.find('span.typename').first();
-      const itemType = typeSpan.text().trim().toUpperCase();
-      const latest_chapter = el.find('.epxs, .chapter').first().text().trim();
+      
+      if (title && link) {
+        const slug = extractSlug(link);
+        
+        // 🔥 2. INI DIA RAHASIANYA! TANGKEP THUMBNAIL MENTAH, TERUS TEMBAK PAKE FILTER
+        const rawThumb = getImageSrc($, item);
+        const cleanThumb = bersihinUrlGambar(rawThumb); 
+        
+        const itemType = item.find('.typename').text().trim() || 'Unknown';
+        const chapterText = item.find('.epxs').text().trim();        const rating = item.find('.numscore').text().trim() || '0';
+        
+        const isColored = item.find('.colored').length > 0;
+        const isHot = item.find('.hotx').length > 0;
 
-      if (title && slug) {
         results.push({
           title,
           slug,
-          thumb: cover || 'https://placehold.co/300x400/1a1a1a/666?text=No+Image',
+          thumb: cleanThumb, // 🔥 Pake yang udah bersih, bye-bye noimg165px.png!
           type: itemType,
-          latest_chapter,
+          latest_chapter: chapterText,
+          rating,
+          is_colored: isColored,
+          is_hot: isHot,
           link
         });
       }
     });
 
-    const nextEl = $('.pagination a.next, a[rel="next"], .pagination .next');
-    const hasNext = nextEl.length > 0 && !nextEl.hasClass('disabled');
+    // ==========================================
+    // PAGINATION
+    // ==========================================
+    const pageNav = $('.pagination');
+    const currentPage = parseInt(pageNav.find('.current').text().trim()) || parseInt(page);
+    let totalPages = currentPage;
+    
+    pageNav.find('a.page-numbers').each((_, el) => {
+      const num = parseInt($(el).text().trim());
+      if (!isNaN(num) && num > totalPages) {
+        totalPages = num;
+      }
+    });
+
+    const hasNext = pageNav.find('.next').length > 0 || String(pageNav.html()).includes('Next') || currentPage < totalPages;
 
     return {
       results,
       pagination: {
-        current: parseInt(page),
-        has_next: hasNext
+        current_page: currentPage,
+        next_page: hasNext ? currentPage + 1 : null,
+        total_pages: totalPages,
+        has_next: hasNext,
+        // Balikin URL API lu sesuai parameter yang dikasih
+        next_url: hasNext ? `/filter?page=${currentPage + 1}&status=${status}&type=${type}&order=${order}&genre=${genre}` : null
       }
     };
   } catch (error) {
     console.error('[SCRAPE] Error filter:', error.message);
-    return {
-      results: [],
-      pagination: { current: page, has_next: false }
-    };
-  }
-}
+    return { results: [], pagination: { current_page: page, has_next: false } };
+  }}
 
 // ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
-async function scrapeFilter({ page = 1, status = '', type = '', order = '' } = {}) {
+async function scrapeFilter({ page = 1, status = '', type = '', order = '', genre = '' } = {}) {
   const start = Date.now();
   
-  // Bikin Cache Key dinamis dari semua kombinasi parameter
-  // Misal jadinya: manga:filter:1:ongoing:manhwa:popular
   const safeStatus = status || 'all';
   const safeType = type || 'all';
   const safeOrder = order || 'all';
-  const KEY = cacheKey('manga', 'filter', page, safeStatus, safeType, safeOrder);
+  const safeGenre = genre || 'all';
   
-  const TTL = 60 * 5; // ⏱️ Cache 5 menit aja cukup buat fitur filter
+  // Bikin Cache Key dinamis dari semua kombinasi parameter
+  const KEY = cacheKey('manga', 'filter', page, safeStatus, safeType, safeOrder, safeGenre);
+  const TTL = 60 * 5; // ⏱️ Cache 5 menit cukup buat ngurangin beban
 
-  // Panggil wrapper cachedScrape
-  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeFilter({ page, status, type, order }));
+  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeFilter({ page, status, type, order, genre }));
 
-  console.log(`[FILTER] P:${page} S:${safeStatus} T:${safeType} O:${safeOrder} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
+  console.log(`[FILTER] P:${page} S:${safeStatus} T:${safeType} O:${safeOrder} G:${safeGenre} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
   return data;
 }
 

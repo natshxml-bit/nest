@@ -1,16 +1,17 @@
 import express from 'express';
 import { scrapeHome } from './scraper/home.js';
-import { scrapePopular } from './scraper/populer.js';
-import { scrapeLatestPage } from './scraper/latest.js';
 import { scrapeUpdates } from './scraper/update.js';
 import { scrapeSearch } from './scraper/search.js';
 import { scrapeDetail } from './scraper/detail.js';
 import { scrapeRead } from './scraper/read.js';
-import { scrapeGenres, scrapeByGenre } from './scraper/genre.js';
 import { scrapeFilter } from './scraper/filter.js';
+import { scrapeGenreList } from './scraper/genre.js'; // 🔥 Import genre.js lu
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// 🔥 Biar semua res.json() otomatis pretty-print 🔥
+app.set('json spaces', 2);
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -23,7 +24,7 @@ app.use((req, res, next) => {
 
 // === ROUTES ===
 
-app.get('/api/home', async (req, res) => {
+app.get('/home', async (req, res) => {
   try {
     const data = await scrapeHome();
     res.json({ success: true, data });
@@ -32,27 +33,29 @@ app.get('/api/home', async (req, res) => {
   }
 });
 
-app.get('/api/popular', async (req, res) => {
+// Route Popular dialihin ke scrapeFilter
+app.get('/popular', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const data = await scrapePopular(page);
+    const data = await scrapeFilter({ page, order: 'popular' });
     res.json({ success: true, page, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-app.get('/api/latest', async (req, res) => {
+// Route Latest dialihin ke scrapeFilter
+app.get('/latest', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const data = await scrapeLatestPage(page);
+    const data = await scrapeFilter({ page, order: 'update' });
     res.json({ success: true, page, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-app.get('/api/updates', async (req, res) => {
+app.get('/updates', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const data = await scrapeUpdates(page);
@@ -62,7 +65,7 @@ app.get('/api/updates', async (req, res) => {
   }
 });
 
-app.get('/api/search', async (req, res) => {
+app.get('/search', async (req, res) => {
   try {
     const q = req.query.q;
     if (!q) return res.status(400).json({ success: false, error: 'Parameter q required' });
@@ -73,7 +76,7 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-app.get('/api/detail/:slug', async (req, res) => {
+app.get('/detail/:slug', async (req, res) => {
   try {
     const data = await scrapeDetail(req.params.slug);
     res.json({ success: true, data });
@@ -82,7 +85,7 @@ app.get('/api/detail/:slug', async (req, res) => {
   }
 });
 
-app.get('/api/read/:slug', async (req, res) => {
+app.get('/read/:slug', async (req, res) => {
   try {
     const data = await scrapeRead(req.params.slug);
     res.json({ success: true, data });
@@ -91,29 +94,21 @@ app.get('/api/read/:slug', async (req, res) => {
   }
 });
 
-app.get('/api/genres', async (req, res) => {
+// 🔥 Route List Genre
+app.get('/genres', async (req, res) => {
   try {
-    const data = await scrapeGenres();
+    const data = await scrapeGenreList();
     res.json({ success: true, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
-app.get('/api/genre/:slug', async (req, res) => {
+// Route Filter Utama
+app.get('/filter', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const data = await scrapeByGenre(req.params.slug, page);
-    res.json({ success: true, page, data });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-app.get('/api/filter', async (req, res) => {
-  try {
-    const { status = '', type = '', order = '', page = 1 } = req.query;
-    const data = await scrapeFilter({ page: parseInt(page), status, type, order });
+    const { status = '', type = '', order = '', genre = '', page = 1 } = req.query;
+    const data = await scrapeFilter({ page: parseInt(page), status, type, order, genre });
     res.json({ success: true, data });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -125,16 +120,15 @@ app.get('/', (req, res) => {
     author: 'natshi',
     message: 'Gunakan secara pintar',
     endpoints: [
-      '/api/home',
-      '/api/popular?page=1',
-      '/api/latest?page=1',
-      '/api/updates?page=1',
-      '/api/search?q=keyword',
-      '/api/detail/:slug',
-      '/api/read/:slug',
-      '/api/genres',
-      '/api/genre/:slug?page=1',
-      '/api/filter?status=ongoing&type=manhwa&order=popular&page=1'
+      '/home',
+      '/popular?page=1',
+      '/latest?page=1',
+      '/updates?page=1',
+      '/search?q=keyword',
+      '/detail/:slug',
+      '/read/:slug',
+      '/genres',
+      '/filter?status=ongoing&type=manhwa&order=popular&genre=3&page=1'
     ]
   });
 });

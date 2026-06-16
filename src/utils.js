@@ -1,5 +1,62 @@
 import Redis from 'ioredis';
-import axios from 'axios'; // 🔥 Import axios di sini
+import axios from 'axios';
+
+// ─── 🔥 SETUP GAMBAR DEFAULT (API BOHONG MODE) ───
+export const DEFAULT_IMG = "https://via.placeholder.com/300x450/1a1a1a/ffffff?text=No+Cover"; 
+
+export function bersihinUrlGambar(imgUrl) {
+    if (!imgUrl) return DEFAULT_IMG;
+    
+    let url = String(imgUrl).trim();
+    
+    // Hapus query parameter TERLEBIH DAHULU
+    if (url.includes('?')) {
+        url = url.split('?')[0];
+    }
+    
+    const lowerUrl = url.toLowerCase();
+    
+    // 🔥 BLACKLIST: Pattern yang jelas-jelas bukan cover manga
+    const blacklist = [
+        'noimg165px.png',
+        'no-image-available',
+        'data:image',
+        'base64',
+        'placeholder-default',
+        '/banner/',
+        'blank.gif',
+        'transparent.png',
+        'svg+xml'  // SVG placeholder
+    ];
+    
+    // 1. Cek blacklist
+    if (blacklist.some(keyword => lowerUrl.includes(keyword))) {
+        return DEFAULT_IMG; 
+    }
+    
+    // 2. Cek apakah URL valid (punya ekstensi gambar ATAU dari CDN valid)
+    const hasImageExt = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(url);
+    const validCDN = url.includes('wp.com') || 
+                    url.includes('gmbr.pro') || 
+                    url.includes('manhwaindo.my') ||
+                    url.includes('wordpress.com') ||
+                    url.includes('shngm.id') ||
+                    url.includes('ikiru.wtf') ||
+                    url.includes('kiryuu.to') ||
+                    url.includes('envira-cdn.com');
+    
+    if (!hasImageExt && !validCDN) {
+        return DEFAULT_IMG;
+    }
+    
+    // 3. 🔥 FORCE HTTPS
+    if (url.startsWith('http://')) {
+        url = url.replace('http://', 'https://');
+    }
+    
+    return url;
+}
+
 
 // ─── SETUP AXIOS NINJA (ANTI 403) ───
 export const NINJA_HEADERS = {
@@ -16,14 +73,12 @@ export const NINJA_HEADERS = {
   'Cache-Control': 'max-age=0'
 };
 
-// Instance axios siap pakai buat file-file scraper lo
 export const axiosNinja = axios.create({
   headers: NINJA_HEADERS,
-  timeout: 15000 // Toleransi loading 15 detik biar aman
+  timeout: 15000 
 });
 
-
-// ─── SETUP REDIS & CACHE LO (JANGAN DIUBAH) ───
+// ─── SETUP REDIS & CACHE LO ───
 let redis = null;
 if (process.env.REDIS_URL) {
   redis = new Redis(process.env.REDIS_URL, {

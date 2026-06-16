@@ -1,24 +1,25 @@
 // src/scraper/update.js
-import { axiosNinja, cachedScrape, cacheKey } from '../utils.js'; // 🔥 Import senjata cache lo!
 import * as cheerio from 'cheerio';
+import { axiosNinja } from '../utils.js'; // 🔥 Cache tetep dicopot total biar update real-time
 
 const BASE_URL = 'https://www.manhwaindo.my';
 
-/** Extract URL dari HTML string */
-function extractUrl(html) {
-  if (!html || typeof html !== 'string') return '';
-  if (!html.includes('<')) return html;
-  const match = html.match(/src=["']([^"']+)["']/i);
-  return match ? match[1] : '';
+// ─── HELPER FUNCTIONS ───
+function getImageSrc($, el) {
+  const $el = $(el);
+  const noscript = $el.find('noscript').html();
+  if (noscript) {
+    const m = noscript.match(/src=["']([^"']+)["']/);
+    if (m && m[1] && !m[1].includes('svg')) return m[1];
+  }
+  return $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
 }
 
-/** Strip HTML tags */
-function stripHtml(html) {
-  if (!html || typeof html !== 'string') return '';
-  return html.replace(/<<[^>]*>/g, '').trim();
+function extractSlug(href) {
+  return href.replace(BASE_URL, '').replace('/series/', '').replace('/project/', '').replace(/\/$/, '');
 }
 
-/** Scrape rating — FAST: timeout 3s, cache-friendly */
+/** Scrape rating — FAST: timeout 3s */
 async function scrapeRating(detailUrl) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000); // 3s max
@@ -32,19 +33,14 @@ async function scrapeRating(detailUrl) {
     clearTimeout(timeout);
     const $ = cheerio.load(html);
     
-    // Fast selectors
-    const fastSelectors = [
-      '.ts-rating', 
-      '.numscore', 
-      '.rating',
-      '.score',
-      '[class*="rating"]',
-    ];
+    // 🔥 FIX SCOPING: Cuma nyari rating di kotak info atas biar ga nyasar ke Related Series
+    const infoArea = $('.postbody .main-info, .info-left, .rating.bixbox');
+    const fastSelectors = ['.numscore', '.rating .num', '.score', '[itemprop="ratingValue"]'];
     
     for (const selector of fastSelectors) {
-      const el = $(selector).first();
+      const el = infoArea.find(selector).first();
       if (el.length) {
-        const text = el.text().trim();
+        let text = el.text().trim() || el.attr('content') || '';
         const match = text.match(/(\d+(\.\d+)?)/);
         if (match) return match[1];
       }
@@ -57,7 +53,7 @@ async function scrapeRating(detailUrl) {
   }
 }
 
-/** Scrape ratings — ULTRA FAST: concurrency 10, no delay */
+/** Scrape ratings — ULTRA FAST: concurrency 10 */
 async function scrapeRatingsFast(items) {
   const CONCURRENCY = 10;
   const results = new Map();
@@ -75,8 +71,9 @@ async function scrapeRatingsFast(items) {
   return results;
 }
 
-// ─── KODINGAN MURNI SCRAPER ───
-async function rawScrapeUpdates(page = 1) {
+// ─── KODINGAN UTAMA SCRAPER TANPA CACHE ───
+async function scrapeUpdates(page = 1) {
+  const start = Date.now();
   const url = page === 1 
     ? `${BASE_URL}/project-updates/` 
     : `${BASE_URL}/project-updates/page/${page}/`;
@@ -88,44 +85,34 @@ async function rawScrapeUpdates(page = 1) {
   const $ = cheerio.load(html);
   const rawResults = [];
 
-  $('.uta, .bsx, .page-item-detail, .listupd .bsx, .item-thumb').each((_, el) => {
+  $('.listupd .bs').each((_, el) => {
     const item = $(el);
-    
-    const img = item.find('img');
-    let thumb = img.attr('data-src') || img.attr('data-lazy-src') || img.attr('src') || '';
-    
-    if (!thumb || thumb.startsWith('data:')) {
-      const noscript = item.find('noscript').html();
-      if (noscript) {
-        const match = noscript.match(/src=["'](https?:\/\/[^"']+)["']/i);
-        if (match) thumb = match[1];
-      }
-    }
-
     const linkEl = item.find('a').first();
-    const title = linkEl.attr('title') || linkEl.text().trim();
+    
+    const title = item.find('.tt').text().trim() || linkEl.attr('title') || '';
     const link = linkEl.attr('href') || '';
     
-    let slug = link.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
-    slug = slug.replace(/^series\//, '');
+    if (title && link) {
+      const slug = extractSlug(link);
+      const thumb = getImageSrc($, item);
+      const type = item.find('.typename').text().trim() || 'Manhwa';
+      const chapterText = item.find('.epxs').text().trim();
+      const time = item.find('.epxdate').text().trim();
+      
+      const isColored = item.find('.colored').length > 0;
+      const isHot = item.find('.hotx').length > 0;
 
-    const typeRaw = item.find('.type, .typez, .typename, .limit').first().text().trim().toUpperCase() || 'MANHWA';
-    const type = stripHtml(typeRaw).split(/\s+/)[0];
-
-    const chapterEl = item.find('.epxs, .epx, .chapter, [class*="chapter"]').first();
-    const chapterText = chapterEl.text().trim();
-    const chapterMatch = chapterText.match(/Chapter\s*(\d+(\.\d+)?)/i);
-    const chapter = chapterMatch ? `Chapter ${chapterMatch[1]}` : chapterText || 'N/A';
-
-    const time = item.find('.time, .date, [class*="time"], [class*="ago"]').first().text().trim();
-
-    const isColor = item.find('.colored, .colx, [class*="color"]').length > 0;
-    const isHot = item.find('.hotx, .hot, [class*="hot"]').length > 0;
-
-    const cleanThumb = extractUrl(thumb);
-
-    if (title && cleanThumb) {
-      rawResults.push({ title, slug, thumb: cleanThumb, type, chapter, time: time || '', badges: [...(isColor?['color']:[]), ...(isHot?['hot']:[])], link });
+      rawResults.push({ 
+        title, 
+        slug, 
+        thumb, 
+        type, 
+        latest_chapter: chapterText, 
+        time, 
+        is_colored: isColored,
+        is_hot: isHot,
+        link 
+      });
     }
   });
 
@@ -137,34 +124,35 @@ async function rawScrapeUpdates(page = 1) {
     rating: ratingMap.get(item.link) || '0'
   }));
 
+  // ==========================================
+  // PAGINATION
+  // ==========================================
   const pageNav = $('.pagination');
   const currentPage = parseInt(pageNav.find('.current').text().trim()) || page;
   let totalPages = currentPage;
-  pageNav.find('a.page-numbers, span.page-numbers').each((_, el) => {
-    const num = parseInt($(el).text().trim());
-    if (!isNaN(num) && num > totalPages) totalPages = num;
+  
+  pageNav.find('a.page-numbers').each((_, el) => {
+    const text = $(el).text().trim();
+    const num = parseInt(text);
+    if (!isNaN(num) && num > totalPages) {
+      totalPages = num;
+    }
   });
 
-  const hasNext = pageNav.find('.next').length > 0 || pageNav.find('a[rel="next"]').length > 0 || currentPage < totalPages;
+  const hasNext = pageNav.find('.next').length > 0 || String(pageNav.html()).includes('Berikutnya') || currentPage < totalPages;
+
+  console.log(`[UPDATES] Page ${page} DONE in ${Date.now() - start}ms | No Cache`);
 
   return {
     results,
-    pagination: { current: currentPage, next_page: hasNext ? currentPage + 1 : null, total: totalPages, has_next: hasNext, next_url: hasNext ? `/api/updates?page=${currentPage + 1}` : null }
+    pagination: { 
+      current_page: currentPage, 
+      next_page: hasNext ? currentPage + 1 : null, 
+      total_pages: totalPages, 
+      has_next: hasNext, 
+      next_url: hasNext ? `/updates?page=${currentPage + 1}` : null 
+    }
   };
-}
-
-// ─── 🔥 FUNGSI UTAMA (CACHE WRAPPER) ───
-async function scrapeUpdates(page = 1) {
-  const start = Date.now();
-  // Key dibedain tiap halaman, misal: manga:updates:1, manga:updates:2
-  const KEY = cacheKey('manga', 'updates', page);
-  const TTL = 60 * 10; // Cache 10 menit
-
-  // Panggil wrapper cachedScrape, kasih arrow function biar tau page ke berapa
-  const { data, cached } = await cachedScrape(KEY, TTL, () => rawScrapeUpdates(page));
-
-  console.log(`[UPDATES] Page ${page} DONE in ${Date.now() - start}ms | Cached: ${cached}`);
-  return data;
 }
 
 export { scrapeUpdates };
